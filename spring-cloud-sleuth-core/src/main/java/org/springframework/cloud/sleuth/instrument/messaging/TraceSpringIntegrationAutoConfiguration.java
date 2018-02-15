@@ -16,7 +16,11 @@
 
 package org.springframework.cloud.sleuth.instrument.messaging;
 
+import java.util.List;
+
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -27,7 +31,10 @@ import org.springframework.cloud.sleuth.Tracer;
 import org.springframework.cloud.sleuth.autoconfig.TraceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.channel.ChannelInterceptorAware;
 import org.springframework.integration.config.GlobalChannelInterceptor;
+import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.InterceptableChannel;
 
 /**
  * {@link org.springframework.boot.autoconfigure.EnableAutoConfiguration
@@ -54,4 +61,54 @@ public class TraceSpringIntegrationAutoConfiguration {
 		return new IntegrationTraceChannelInterceptor(beanFactory);
 	}
 
+	@Bean BeanPostProcessor tracingMessageChannelBPP(BeanFactory beanFactory) {
+		return new TracingMessageChannelBPP(beanFactory);
+	}
+}
+
+class TracingMessageChannelBPP implements BeanPostProcessor {
+
+	private final BeanFactory beanFactory;
+	private TraceChannelInterceptor interceptor;
+
+	TracingMessageChannelBPP(BeanFactory beanFactory) {
+		this.beanFactory = beanFactory;
+	}
+
+	@Override public Object postProcessBeforeInitialization(Object bean, String beanName)
+			throws BeansException {
+		return bean;
+	}
+
+	@Override public Object postProcessAfterInitialization(Object bean, String beanName)
+			throws BeansException {
+		if (bean instanceof ChannelInterceptorAware) {
+			ChannelInterceptorAware interceptorAware = (ChannelInterceptorAware) bean;
+			if (!hasTracedChannelInterceptor(interceptorAware.getChannelInterceptors())) {
+				interceptorAware.addInterceptor(interceptor());
+			}
+		} else if (bean instanceof InterceptableChannel) {
+			InterceptableChannel interceptorAware = (InterceptableChannel) bean;
+			if (!hasTracedChannelInterceptor(interceptorAware.getInterceptors())) {
+				interceptorAware.addInterceptor(interceptor());
+			}
+		}
+		return bean;
+	}
+
+	private boolean hasTracedChannelInterceptor(List<ChannelInterceptor> interceptors) {
+		for (ChannelInterceptor channelInterceptor : interceptors) {
+			if (channelInterceptor instanceof TraceChannelInterceptor) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private TraceChannelInterceptor interceptor() {
+		if (this.interceptor == null) {
+			this.interceptor = this.beanFactory.getBean(TraceChannelInterceptor.class);
+		}
+		return this.interceptor;
+	}
 }
