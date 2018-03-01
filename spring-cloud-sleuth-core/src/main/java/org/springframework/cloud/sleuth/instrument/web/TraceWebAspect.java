@@ -73,14 +73,12 @@ public class TraceWebAspect {
 
 	private final Tracer tracer;
 	private final SpanNamer spanNamer;
-	//private final TraceKeys traceKeys;
 	private final ErrorParser errorParser;
 
-	public TraceWebAspect(Tracer tracer, SpanNamer spanNamer, //TraceKeys traceKeys,
+	public TraceWebAspect(Tracer tracer, SpanNamer spanNamer,
 			ErrorParser errorParser) {
 		this.tracer = tracer;
 		this.spanNamer = spanNamer;
-		//this.traceKeys = traceKeys;
 		this.errorParser = errorParser;
 	}
 
@@ -98,9 +96,6 @@ public class TraceWebAspect {
 
 	@Pointcut("execution(public org.springframework.web.context.request.async.WebAsyncTask *(..))")
 	private void anyPublicMethodReturningWebAsyncTask() { } // NOSONAR
-
-	@Pointcut("execution(public * org.springframework.web.servlet.HandlerExceptionResolver.resolveException(..)) && args(request, response, handler, ex)")
-	private void anyHandlerExceptionResolver(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) { } // NOSONAR
 
 	@Pointcut("(anyRestControllerAnnotated() || anyControllerAnnotated()) && anyPublicMethodReturningWebAsyncTask()")
 	private void anyControllerOrRestControllerWithPublicWebAsyncTaskMethod() { } // NOSONAR
@@ -138,15 +133,6 @@ public class TraceWebAspect {
 			}
 		}
 		return webAsyncTask;
-	}
-
-	@Around("anyHandlerExceptionResolver(request, response, handler, ex)")
-	public Object markRequestForSpanClosing(ProceedingJoinPoint pjp,
-			HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Throwable {
-		Span currentSpan = this.tracer.currentSpan();
-		try (Tracer.SpanInScope ws = this.tracer.withSpanInScope(currentSpan)){
-			return pjp.proceed();
-		}
 	}
 
 }
