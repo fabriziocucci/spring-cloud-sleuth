@@ -34,6 +34,8 @@ import brave.propagation.TraceContext;
 import brave.spring.web.TracingClientHttpRequestInterceptor;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -261,6 +263,8 @@ class NettyAspect {
 }
 
 class TracingHttpClientInstrumentation {
+	private static final Log log = LogFactory.getLog(TracingHttpClientInstrumentation.class);
+
 	static final Propagation.Setter<HttpHeaders, String> SETTER = new Propagation.Setter<HttpHeaders, String>() {
 		@Override public void put(HttpHeaders carrier, String key, String value) {
 			carrier.add(key, value);
@@ -293,18 +297,24 @@ class TracingHttpClientInstrumentation {
 			HttpMethod method,
 			String url, Function<? super HttpClientRequest, ? extends Publisher<Void>> handler) throws Throwable {
 		// add headers and set CS
+		final Span currentSpan = this.tracer.currentSpan();
 		final AtomicReference<Span> span = new AtomicReference<>();
 		final AtomicReference<Tracer.SpanInScope> ws = new AtomicReference<>();
 		Function<HttpClientRequest, Publisher<Void>> combinedFunction =
 				req -> {
-					io.netty.handler.codec.http.HttpHeaders headers = req
-							.requestHeaders();
-					span.set(this.handler.handleSend(this.injector, headers, req));
-					ws.set(tracer.withSpanInScope(span.get()));
-					if (handler != null) {
-						return handler.apply(req);
+					try (Tracer.SpanInScope spanInScope = this.tracer.withSpanInScope(currentSpan)) {
+						io.netty.handler.codec.http.HttpHeaders headers = req
+								.requestHeaders();
+						span.set(this.handler.handleSend(this.injector, headers, req));
+						ws.set(this.tracer.withSpanInScope(span.get()));
+						if (log.isDebugEnabled()) {
+							log.debug("Created a new client span for Netty client");
+						}
+						if (handler != null) {
+							return handler.apply(req);
+						}
+						return req;
 					}
-					return req;
 				};
 		// run
 		Mono<HttpClientResponse> responseMono =
@@ -313,6 +323,7 @@ class TracingHttpClientInstrumentation {
 		return responseMono.doOnSuccessOrError((httpClientResponse, throwable) -> {
 			// status codes and CR
 			this.handler.handleReceive(httpClientResponse, throwable, span.get());
+			log.info("Setting client sent spans");
 			if (ws.get() != null) {
 				ws.get().close();
 			}

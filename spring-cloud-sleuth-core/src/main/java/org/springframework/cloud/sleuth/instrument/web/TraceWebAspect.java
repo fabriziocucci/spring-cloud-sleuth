@@ -16,8 +16,6 @@
 
 package org.springframework.cloud.sleuth.instrument.web;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 
@@ -31,8 +29,6 @@ import org.springframework.cloud.sleuth.ErrorParser;
 import org.springframework.cloud.sleuth.SpanNamer;
 import org.springframework.cloud.sleuth.instrument.async.TraceCallable;
 import org.springframework.web.context.request.async.WebAsyncTask;
-
-import brave.Span;
 
 /**
  * Aspect that adds tracing to
